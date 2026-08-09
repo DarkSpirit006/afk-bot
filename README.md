@@ -1,6 +1,6 @@
 # Minecraft AFK Bot
 
-[![Build](https://img.shields.io/github/actions/workflow/status/DarkSpirit006/afk-bot/test.yml?branch=test&style=for-the-badge&label=BUILD)](https://github.com/DarkSpirit006/afk-bot/actions/workflows/test.yml)
+[![Build](https://img.shields.io/github/actions/workflow/status/DarkSpirit006/afk-bot/test.yml?branch=main&style=for-the-badge&label=BUILD)](https://github.com/DarkSpirit006/afk-bot/actions/workflows/test.yml)
 [![CodeFactor](https://www.codefactor.io/repository/github/DarkSpirit006/afk-bot/badge?style=for-the-badge)](https://www.codefactor.io/repository/github/DarkSpirit006/afk-bot)
 [![Repo size](https://img.shields.io/github/repo-size/DarkSpirit006/afk-bot?style=for-the-badge&label=REPO%20SIZE)](https://github.com/DarkSpirit006/afk-bot)
 [![Code size](https://img.shields.io/github/languages/code-size/DarkSpirit006/afk-bot?style=for-the-badge&label=CODE%20SIZE)](https://github.com/DarkSpirit006/afk-bot)
