@@ -1,0 +1,58 @@
+name: Sync branch install defaults
+
+on:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set this branch in installers and README commands
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const branch = process.env.BRANCH_NAME;
+          const bashBranch = branch.replace(/["\\$`]/g, '\\$&');
+          const powershellBranch = branch.replace(/'/g, "''");
+          const branchUrl = encodeURIComponent(branch).replace(/%2F/g, '/');
+          const termux = `<!-- BRANCH_INSTALL_TERMUX_START -->\n\`\`\`sh\ncurl -fsSL "https://raw.githubusercontent.com/DarkSpirit006/afk-bot/${branchUrl}/install.sh" | bash\n\`\`\`\n<!-- BRANCH_INSTALL_TERMUX_END -->`;
+          const powershell = `<!-- BRANCH_INSTALL_POWERSHELL_START -->\n\`\`\`powershell\nirm "https://raw.githubusercontent.com/DarkSpirit006/afk-bot/${branchUrl}/install.ps1" | iex\n\`\`\`\n<!-- BRANCH_INSTALL_POWERSHELL_END -->`;
+          const readmePath = 'README.md';
+          const readme = fs.readFileSync(readmePath, 'utf8')
+            .replace(/<!-- BRANCH_INSTALL_TERMUX_START -->[\s\S]*?<!-- BRANCH_INSTALL_TERMUX_END -->/, termux)
+            .replace(/<!-- BRANCH_INSTALL_POWERSHELL_START -->[\s\S]*?<!-- BRANCH_INSTALL_POWERSHELL_END -->/, powershell);
+          fs.writeFileSync(readmePath, readme);
+
+          const shellPath = 'install.sh';
+          const shell = fs.readFileSync(shellPath, 'utf8').replace(
+            /^DEFAULT_REPO_BRANCH=.*$/m,
+            `DEFAULT_REPO_BRANCH="${bashBranch}"`,
+          );
+          fs.writeFileSync(shellPath, shell);
+
+          const powershellPath = 'install.ps1';
+          const powershellScript = fs.readFileSync(powershellPath, 'utf8').replace(
+            /^\$defaultRepoBranch = .*$/m,
+            `$defaultRepoBranch = '${powershellBranch}'`,
+          );
+          fs.writeFileSync(powershellPath, powershellScript);
+          NODE
+
+      - name: Commit generated defaults
+        run: |
+          git diff --quiet -- README.md install.sh install.ps1 && exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md install.sh install.ps1
+          git commit -m 'chore: sync branch install defaults'
+          git push

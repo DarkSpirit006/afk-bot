@@ -1,0 +1,33 @@
+{
+  "name": "minecraft-afk-bot",
+  "version": "1.1.0",
+  "private": true,
+  "description": "A feature-rich Minecraft AFK bot built with Mineflayer.",
+  "main": "bot.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "start": "node setup.js --update",
+    "afk": "node setup.js --update",
+    "test": "node --test",
+    "check": "node --check bot.js && node --check setup.js && node --check src/bot.js"
+  },
+  "keywords": [
+    "minecraft",
+    "mineflayer",
+    "afk-bot",
+    "minecraft-bot",
+    "nodejs"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "mineflayer": "^4.27.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "uuid": "^11.0.0"
+  },
+  "overrides": {
+    "uuid": "^11.0.0"
+  }
+}
