@@ -310,15 +310,42 @@ async function main() {
     `Minecraft AFK bot setup (${device})\nInstalling dependencies...`,
   );
   migrateUserData();
+  const npmEnv = { ...process.env };
+  // Best-effort: try to update npm globally to the latest version. Do not fail on error.
+  try {
+    console.log(
+      "Attempting to update npm to the latest version (may require elevation)...",
+    );
+    const npmUpgrade =
+      process.platform === "win32"
+        ? spawnSync(
+            process.env.ComSpec || "cmd.exe",
+            ["/d", "/s", "/c", npm + " install -g npm@latest"],
+            { stdio: "inherit", env: npmEnv },
+          )
+        : spawnSync(npm, ["install", "-g", "npm@latest"], {
+            stdio: "inherit",
+            env: npmEnv,
+          });
+    if (npmUpgrade && npmUpgrade.status === 0) {
+      console.log("npm updated to latest.");
+    } else {
+      console.warn(
+        "Could not update npm globally; continuing without failing.",
+      );
+    }
+  } catch (e) {
+    console.warn("npm upgrade attempt failed:", e && e.message ? e.message : e);
+  }
   const npmArgs = ["install", "--omit=dev", "--no-audit", "--no-fund"];
   const install =
     process.platform === "win32"
       ? spawnSync(
           process.env.ComSpec || "cmd.exe",
           ["/d", "/s", "/c", npm + " " + npmArgs.join(" ")],
-          { stdio: "inherit" },
+          { stdio: "inherit", env: npmEnv },
         )
-      : spawnSync(npm, npmArgs, { stdio: "inherit" });
+      : spawnSync(npm, npmArgs, { stdio: "inherit", env: npmEnv });
   if (install.error || install.status !== 0) {
     console.error(install.error?.message || "Dependency installation failed.");
     process.exit(1);
