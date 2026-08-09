@@ -30,7 +30,8 @@ jobs:
           const readmePath = 'README.md';
           const readme = fs.readFileSync(readmePath, 'utf8')
             .replace(/<!-- BRANCH_INSTALL_TERMUX_START -->[\s\S]*?<!-- BRANCH_INSTALL_TERMUX_END -->/, termux)
-            .replace(/<!-- BRANCH_INSTALL_POWERSHELL_START -->[\s\S]*?<!-- BRANCH_INSTALL_POWERSHELL_END -->/, powershell);
+            .replace(/<!-- BRANCH_INSTALL_POWERSHELL_START -->[\s\S]*?<!-- BRANCH_INSTALL_POWERSHELL_END -->/, powershell)
+            .replace(/(https:\/\/img\.shields\.io\/github\/actions\/workflow\/status\/DarkSpirit006\/afk-bot\/test\.yml\?branch=)[^&\s]+/, `$1${branchUrl}`);
           fs.writeFileSync(readmePath, readme);
 
           const shellPath = 'install.sh';
