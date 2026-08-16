@@ -22,11 +22,15 @@ function syncExampleDefaults(envPath, examplePath, env, logger) {
     if (!match || env[match[1]] !== undefined) continue;
     try {
       const raw = match[2];
-      const value = raw.startsWith('"') && raw.endsWith('"') ? JSON.parse(raw) : raw;
+      const value =
+        raw.startsWith('"') && raw.endsWith('"') ? JSON.parse(raw) : raw;
       saveEnvValue(envPath, match[1], value);
       logger.info("CONFIG", `Added ${match[1]} to .env.`);
     } catch (error) {
-      logger.warn("CONFIG", `Could not add ${match[1]} to .env: ${error.message}`);
+      logger.warn(
+        "CONFIG",
+        `Could not add ${match[1]} to .env: ${error.message}`,
+      );
     }
   }
 }

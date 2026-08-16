@@ -31,13 +31,15 @@ function Merge-Checkout($sourceDir) {
     $destination = Join-Path $appDir $_.Name
     if (Test-Path -LiteralPath $destination) {
       Write-Host "Keeping existing $destination; merge it manually if needed."
-    } else {
+    }
+    else {
       Move-Item -LiteralPath $_.FullName -Destination $appDir
     }
   }
   if ((Get-ChildItem -LiteralPath $sourceDir -Force | Measure-Object).Count -eq 0) {
     Remove-Item -LiteralPath $sourceDir -Force
-  } else {
+  }
+  else {
     Write-Host "Some files remain in $sourceDir because matching files already existed."
   }
 }
@@ -61,10 +63,12 @@ if (-not (Test-Path (Join-Path $appDir 'setup.js'))) {
     $downloadDir = Join-Path $env:TEMP ("afk-bot-" + [guid]::NewGuid().ToString())
     & git.exe clone --branch $repoBranch $repoUrl $downloadDir
     Merge-Checkout $downloadDir
-  } else {
+  }
+  else {
     & git.exe clone --branch $repoBranch $repoUrl $appDir
   }
-} elseif (Test-Path (Join-Path $appDir '.git')) {
+}
+elseif (Test-Path (Join-Path $appDir '.git')) {
   $installedBranch = (& git.exe -C $appDir branch --show-current).Trim()
   if (-not $installedBranch) { throw 'Cannot update a detached Git checkout. Check out the branch originally used for installation first.' }
   if ($installedBranch -ne $repoBranch) {
@@ -82,14 +86,16 @@ if (-not (Test-Path (Join-Path $appDir 'setup.js'))) {
     try {
       $checkoutOutput = & git.exe -C $appDir checkout $repoBranch 2>&1
       $checkoutExitCode = 0
-    } catch {
+    }
+    catch {
       $checkoutExitCode = 1
       $checkoutOutput = $_.Exception.Message
     }
     if ($checkoutExitCode -ne 0) {
       if ($checkoutOutput -match 'already exists') {
         Write-Host "Branch $repoBranch already exists locally; continuing..."
-      } else {
+      }
+      else {
         & git.exe -C $appDir checkout -b $repoBranch "origin/$repoBranch"
       }
     }
@@ -109,5 +115,6 @@ try {
   $env:Path = "$(Split-Path $commands.Node);$env:Path"
   & $commands.Node setup.js
   if ($LASTEXITCODE) { exit $LASTEXITCODE }
-} finally { Pop-Location }
+}
+finally { Pop-Location }
 

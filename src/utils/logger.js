@@ -6,7 +6,11 @@ function createLogger(level = "info") {
   const write = (severity, category, message) => {
     if (LEVELS[severity] < threshold) return;
     const line = `[${new Date().toLocaleTimeString()}] [${category}] ${message}`;
-    (severity === "error" ? console.error : severity === "warn" ? console.warn : console.log)(line);
+    (severity === "error"
+      ? console.error
+      : severity === "warn"
+        ? console.warn
+        : console.log)(line);
   };
   return {
     debug: (category, message) => write("debug", category, message),

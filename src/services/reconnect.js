@@ -1,2 +1,26 @@
-function createReconnect({ delayMs, connect, logger }) { let timer; let attempt = 0; return { schedule() { if (timer) return; attempt += 1; logger.info("RECONNECT", `Attempt ${attempt}; waiting ${delayMs / 1000}s.`); timer = setTimeout(() => { timer = undefined; connect(); }, delayMs); }, reset() { attempt = 0; }, cancel() { clearTimeout(timer); timer = undefined; } }; }
+function createReconnect({ delayMs, connect, logger }) {
+  let timer;
+  let attempt = 0;
+  return {
+    schedule() {
+      if (timer) return;
+      attempt += 1;
+      logger.info(
+        "RECONNECT",
+        `Attempt ${attempt}; waiting ${delayMs / 1000}s.`,
+      );
+      timer = setTimeout(() => {
+        timer = undefined;
+        connect();
+      }, delayMs);
+    },
+    reset() {
+      attempt = 0;
+    },
+    cancel() {
+      clearTimeout(timer);
+      timer = undefined;
+    },
+  };
+}
 module.exports = { createReconnect };

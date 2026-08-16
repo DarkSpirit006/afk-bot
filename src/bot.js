@@ -5,10 +5,18 @@ const { loadConfig } = require("./config/config");
 const defaults = require("./config/defaults");
 const { validateConfig } = require("./config/validation");
 const { createLogger } = require("./utils/logger");
-const { format, normalizeMessage, normalizeName, USERNAME } = require("./utils/helpers");
+const {
+  format,
+  normalizeMessage,
+  normalizeName,
+  USERNAME,
+} = require("./utils/helpers");
 const { createPermissions } = require("./permissions/permissions");
 const { saveEnvValue } = require("./services/env-store");
-const { syncMessageDefaults, syncExampleDefaults } = require("./services/env-migration");
+const {
+  syncMessageDefaults,
+  syncExampleDefaults,
+} = require("./services/env-migration");
 const { createReconnect } = require("./services/reconnect");
 const { createAfk } = require("./services/afk");
 const { createAuthMe } = require("./auth/authme");
@@ -16,50 +24,447 @@ const { createNavigation } = require("./navigation/navigation");
 const { parseCommand } = require("./commands/parser");
 
 function extractSender(bot, uuid, text, senderNames = new Map()) {
-  const players = Object.entries(bot.players || {}).filter(([name]) => normalizeName(name) !== normalizeName(bot.username));
+  const players = Object.entries(bot.players || {}).filter(
+    ([name]) => normalizeName(name) !== normalizeName(bot.username),
+  );
   const uuidKey = String(uuid || "").toLowerCase();
-  const byUuid = players.find(([, value]) => String(value?.uuid || "").toLowerCase() === uuidKey)?.[0];
+  const byUuid = players.find(
+    ([, value]) => String(value?.uuid || "").toLowerCase() === uuidKey,
+  )?.[0];
   if (byUuid) return byUuid;
   const cached = senderNames.get(uuidKey);
   if (cached) return cached;
-  const direct = String(text).match(/^(?:<|\[)?([A-Za-z0-9_]{3,16})(?:>|\])?\s*(?::|→|->|»|>)/);
+  const direct = String(text).match(
+    /^(?:<|\[)?([A-Za-z0-9_]{3,16})(?:>|\])?\s*(?::|→|->|»|>)/,
+  );
   if (direct) return direct[1];
   const normalized = String(text).toLowerCase();
   const commandIndex = normalized.search(/!|\/\w/);
-  return players.map(([name]) => ({ name, index: normalized.lastIndexOf(name.toLowerCase()) }))
-    .filter(({ index }) => index >= 0 && index < (commandIndex >= 0 ? commandIndex : normalized.length))
-    .filter(({ name, index }) => !/[A-Za-z0-9_]/.test(normalized[index - 1] || "") && !/[A-Za-z0-9_]/.test(normalized[index + name.length] || ""))
+  return players
+    .map(([name]) => ({
+      name,
+      index: normalized.lastIndexOf(name.toLowerCase()),
+    }))
+    .filter(
+      ({ index }) =>
+        index >= 0 &&
+        index < (commandIndex >= 0 ? commandIndex : normalized.length),
+    )
+    .filter(
+      ({ name, index }) =>
+        !/[A-Za-z0-9_]/.test(normalized[index - 1] || "") &&
+        !/[A-Za-z0-9_]/.test(normalized[index + name.length] || ""),
+    )
     .sort((a, b) => b.index - a.index)[0]?.name;
 }
 function senderNameValue(value) {
   if (typeof value === "string") return value.trim();
   if (!value || typeof value !== "object") return "";
-  if (typeof value.text === "string" && value.text.trim()) return value.text.trim();
-  if (typeof value.name === "string" && value.name.trim()) return value.name.trim();
-  if (Array.isArray(value.extra)) return value.extra.map(senderNameValue).find(Boolean) || "";
+  if (typeof value.text === "string" && value.text.trim())
+    return value.text.trim();
+  if (typeof value.name === "string" && value.name.trim())
+    return value.name.trim();
+  if (Array.isArray(value.extra))
+    return value.extra.map(senderNameValue).find(Boolean) || "";
   return "";
 }
-function teleportType(text) { if (/(?:^|\s)\/?tpahere(?:\s|$)|requested.*teleport.*to them/i.test(text)) return "tpahere"; if (/(?:^|\s)\/?tpa(?:\s|$)|(?:requested|wants?).*(?:teleport|tpa)/i.test(text)) return "tpa"; }
+function teleportType(text) {
+  if (/(?:^|\s)\/?tpahere(?:\s|$)|requested.*teleport.*to them/i.test(text))
+    return "tpahere";
+  if (
+    /(?:^|\s)\/?tpa(?:\s|$)|(?:requested|wants?).*(?:teleport|tpa)/i.test(text)
+  )
+    return "tpa";
+}
 
 function start() {
-  require("dotenv").config(); const config = loadConfig(); const logger = createLogger(config.logLevel); const envPath = path.join(__dirname, "..", ".env"); syncExampleDefaults(envPath, path.join(__dirname, "..", ".env.example"), process.env, logger); syncMessageDefaults(envPath, process.env, defaults, logger); const errors = validateConfig(config);
-  if (errors.length) { errors.forEach(error => logger.error("CONFIG", error)); process.exitCode = 1; return; }
-  logger.info("CONFIG", `Configuration loaded: ${config.host}:${config.port}, username ${config.username}, auth ${config.auth}.`);
-  let bot; let stopping = false; let pendingTeleport; let lastTeleport = 0; const senderNames = new Map(); const recentCommands = new Map(); const knownPlayers = new Set(); let greetingsReady = false;
-  const permissions = createPermissions(config); const getBot = () => bot;
+  require("dotenv").config();
+  const config = loadConfig();
+  const logger = createLogger(config.logLevel);
+  const envPath = path.join(__dirname, "..", ".env");
+  syncExampleDefaults(
+    envPath,
+    path.join(__dirname, "..", ".env.example"),
+    process.env,
+    logger,
+  );
+  syncMessageDefaults(envPath, process.env, defaults, logger);
+  const errors = validateConfig(config);
+  if (errors.length) {
+    errors.forEach((error) => logger.error("CONFIG", error));
+    process.exitCode = 1;
+    return;
+  }
+  logger.info(
+    "CONFIG",
+    `Configuration loaded: ${config.host}:${config.port}, username ${config.username}, auth ${config.auth}.`,
+  );
+  let bot;
+  let stopping = false;
+  let pendingTeleport;
+  let lastTeleport = 0;
+  const senderNames = new Map();
+  const recentCommands = new Map();
+  const knownPlayers = new Set();
+  let greetingsReady = false;
+  const permissions = createPermissions(config);
+  const getBot = () => bot;
   const afk = createAfk({ getBot, intervalMs: config.moveEveryMs, logger });
-  const navigation = createNavigation({ getBot, logger, onActiveChange: active => { if (active) afk.stop(); else if (config.features.afk && config.moveEnabled) afk.start(); } });
+  const navigation = createNavigation({
+    getBot,
+    logger,
+    onActiveChange: (active) => {
+      if (active) afk.stop();
+      else if (config.features.afk && config.moveEnabled) afk.start();
+    },
+  });
   const auth = createAuthMe({ getBot, password: config.password, logger });
-  const reconnect = createReconnect({ delayMs: config.reconnectMs, logger, connect });
+  const reconnect = createReconnect({
+    delayMs: config.reconnectMs,
+    logger,
+    connect,
+  });
   const reply = (message) => bot?.chat(message);
   const message = (key, values) => format(config.messages[key], values);
-  const save = (key, value) => { try { saveEnvValue(path.join(__dirname, "..", ".env"), key, value); } catch (error) { logger.error("CONFIG", error.message); } };
-  const deny = (sender) => { reply(message("BLACKLIST_MESSAGE", { player: sender })); logger.warn("COMMAND", `Ignored blacklisted player ${sender}.`); };
-  function setTeleport(sender, type) { if (pendingTeleport) { logger.warn("TPA", `Ignored duplicate request from ${sender}.`); return; } pendingTeleport = { sender, type, expiresAt: Date.now() + 30000 }; reply(message("TELEPORT_APPROVAL_MESSAGE", pendingTeleport)); logger.info("TPA", `Awaiting master approval for ${type} from ${sender}.`); setTimeout(() => { if (pendingTeleport?.expiresAt <= Date.now()) { logger.info("TPA", `Request from ${pendingTeleport.sender} expired.`); pendingTeleport = undefined; } }, 30000); }
-  function handleMaster(sender, name, args) { if (!permissions.isMaster(sender)) { reply(message("MASTER_ONLY_MESSAGE", { player: sender })); return; } const target = name === "rm" ? args[1] : args[0]; if (name === "public" || name === "private") { config.allowOtherPlayers = name === "public"; if (name === "private") { config.tpaEnabled = false; config.tpahereEnabled = false; save("TPA_ENABLED", false); save("TPAHERE_ENABLED", false); } save("ALLOW_OTHER_PLAYERS", config.allowOtherPlayers); reply(message(name === "public" ? "PUBLIC_ACCESS_MESSAGE" : "PRIVATE_ACCESS_MESSAGE")); return; } if (name === "tpa") { const enabled = ["on", "true", "enable", "enabled"].includes(String(target).toLowerCase()); const disabled = ["off", "false", "disable", "disabled"].includes(String(target).toLowerCase()); if (!enabled && !disabled) return reply(message("TPA_USAGE_MESSAGE")); config.tpaEnabled = enabled; config.tpahereEnabled = enabled; save("TPA_ENABLED", enabled); save("TPAHERE_ENABLED", enabled); return reply(message("TPA_STATUS_MESSAGE", { status: enabled ? "enabled" : "disabled" })); } if (!USERNAME.test(target || "")) return reply(message(name === "master" ? "MASTER_USAGE_MESSAGE" : name === "bl" ? "BLACKLIST_USAGE_MESSAGE" : name === "rmbl" ? "RM_BLACKLIST_USAGE_MESSAGE" : "RM_MASTER_USAGE_MESSAGE")); const key = normalizeName(target); if (name === "master") { if (permissions.isMaster(target)) return reply(message("ALREADY_MASTER_MESSAGE", { player: target })); config.masters.add(key); save("MASTERS", [...config.masters].join(",")); return reply(message("MASTER_ADDED_MESSAGE", { player: target })); } if (name === "bl") { if (permissions.isPrimaryMaster(target)) return reply(message("PRIMARY_MASTER_BLACKLIST_MESSAGE")); if (config.blacklist.has(key)) return reply(message("ALREADY_BLACKLISTED_MESSAGE", { player: target })); config.blacklist.add(key); save("BLACKLIST", [...config.blacklist].join(",")); return reply(message("BLACKLISTED_MESSAGE", { player: target })); } if (name === "rm" && args[0]?.toLowerCase() !== "master") return reply(message("RM_MASTER_USAGE_MESSAGE")); if (name === "rm" && permissions.isPrimaryMaster(target)) return reply(message("MASTER_PROTECTED_MESSAGE", { player: sender, master: config.primaryMaster })); if (name === "rm") { if (!config.masters.delete(key)) return reply(message("NOT_SECONDARY_MASTER_MESSAGE", { player: target })); save("MASTERS", [...config.masters].join(",")); return reply(message("MASTER_REMOVED_MESSAGE", { player: target })); } if (!config.blacklist.delete(key)) return reply(message("NOT_BLACKLISTED_MESSAGE", { player: target })); save("BLACKLIST", [...config.blacklist].join(",")); reply(message("UNBLACKLISTED_MESSAGE", { player: target })); }
-  function handleCommand(sender, text) { if (normalizeName(sender) === normalizeName(bot?.username)) return; const command = parseCommand(text, config.commandPrefix, sender); if (!command) return; const { name, args } = command; const now = Date.now(); const fingerprint = `${normalizeName(sender)}|${name}|${args.map(normalizeName).join("|")}`; const previous = recentCommands.get(fingerprint); if (previous && now - previous < 1000) { logger.debug("COMMAND", `Ignored duplicate command packet from ${sender}.`); return; } recentCommands.set(fingerprint, now); for (const [key, timestamp] of recentCommands) if (now - timestamp > 5000) recentCommands.delete(key); if (permissions.isBlacklisted(sender)) return deny(sender); if (name === "y" || name === "n") { if (permissions.isMaster(sender) && pendingTeleport && pendingTeleport.expiresAt > Date.now()) { const request = pendingTeleport; pendingTeleport = undefined; if (name === "y") reply("/tpaccept"); else reply(message("TPA_REJECT_MESSAGE", { player: request.sender })); } return; } if (["master", "rm", "bl", "rmbl", "public", "private", "tpa"].includes(name)) return handleMaster(sender, name, args); if (name === "cmd") { config.messages.COMMAND_HELP_GENERAL.split("|").forEach(reply); if (permissions.isMaster(sender)) config.messages.COMMAND_HELP_MASTER.split("|").forEach(reply); return; } if (name === "status") return reply(message("STATUS_MESSAGE", { seconds: Math.floor(process.uptime()) })); if (!permissions.canUseBot(sender)) return; logger.info("COMMAND", `${config.commandPrefix}${name} from ${sender}.`); if (["follow", "come", "stopfollow"].includes(name) && !config.features.navigation) { logger.warn("NAVIGATION", "Ignored navigation command because FEATURE_NAVIGATION is disabled."); return; } if (name === "follow") return navigation.follow(sender) ? reply(message("FOLLOWING_MESSAGE", { player: sender })) : reply(message("FOLLOW_TARGET_NOT_FOUND_MESSAGE", { player: sender })); if (name === "come") { const hasCoordinates = args.length >= 3 && args.slice(0, 3).every(value => Number.isFinite(Number(value))); const success = navigation.come(sender, args); return success ? reply(hasCoordinates ? message("COMING_COORDINATES_MESSAGE", { coordinates: args.slice(0, 3).join(" ") }) : message("COMING_PLAYER_MESSAGE", { player: sender })) : reply(message("COME_TARGET_NOT_FOUND_MESSAGE", { player: sender })); } if (name === "stopfollow") { if (!navigation.isActive()) return reply(message("NOT_FOLLOWING_MESSAGE", { player: sender })); navigation.stop(); return reply(message("NAVIGATION_STOPPED_MESSAGE")); } if (name === "stop") { if (!permissions.isPrimaryMaster(sender)) return reply(message("PRIMARY_STOP_ONLY_MESSAGE", { player: sender })); reply(message("STOP_MESSAGE")); shutdown(); } }
-  function connect() { if (stopping) return; logger.info("CONNECTION", `Connecting to ${config.host}:${config.port} as ${config.username}.`); bot = mineflayer.createBot({ host: config.host, port: config.port, username: config.username, auth: config.auth, ...(config.version ? { version: config.version } : {}) }); bot.loadPlugin(pathfinder); bot.once("spawn", () => { reconnect.reset(); auth.reset(); navigation.setup(); knownPlayers.clear(); Object.keys(bot.players || {}).forEach(name => knownPlayers.add(normalizeName(name))); greetingsReady = false; setTimeout(() => { greetingsReady = true; }, 5000); logger.info("CONNECTION", `Connected${bot.version ? ` (${bot.version})` : ""}.`); if (config.features.afk && config.moveEnabled) afk.start(); }); bot.on("playerJoined", player => { const name = typeof player === "string" ? player : player?.username; if (!name) return; const key = normalizeName(name); const isNew = !knownPlayers.has(key); knownPlayers.add(key); if (isNew && greetingsReady && permissions.isPrimaryMaster(name)) { reply(message("MASTER_JOIN_MESSAGE", { player: name })); logger.info("CONNECTION", `Primary master joined: ${name}.`); } }); bot.on("playerLeft", player => { const name = typeof player === "string" ? player : player?.username; if (!name) return; knownPlayers.delete(normalizeName(name)); if (navigation.handlePlayerLeft(name)) reply(message("NAVIGATION_TARGET_LEFT_MESSAGE", { player: name })); if (permissions.isPrimaryMaster(name)) { reply(message("MASTER_LEAVE_MESSAGE", { player: name })); logger.info("CONNECTION", `Primary master left: ${name}.`); } }); bot.on("respawn", () => { navigation.stop(); navigation.setup(); logger.info("CONNECTION", "World or dimension changed; reset navigation for the new world."); }); bot.on("path_update", result => { if (["noPath", "timeout"].includes(result?.status)) navigation.recalculate(); }); bot.on("goal_reached", () => { if (navigation.goalReached()) { logger.info("NAVIGATION", "Goal reached."); reply(message("GOAL_REACHED_MESSAGE")); } }); bot._client?.on("playerChat", data => { const uuid = String(data.sender || "").toLowerCase(); const name = senderNameValue(data.senderName); if (uuid && name) senderNames.set(uuid, name); }); bot.on("chat", (username, chatMessage) => handleCommand(username, chatMessage)); bot.on("messagestr", (raw, _position, _json, uuid) => { const text = normalizeMessage(raw); if (config.features.authme) auth.inspect(text); const sender = extractSender(bot, uuid, text, senderNames); if (!sender || normalizeName(sender) === normalizeName(bot.username)) return; const type = config.features.tpa && teleportType(text); if (type) { if (permissions.isBlacklisted(sender)) return deny(sender); const enabled = type === "tpa" ? config.tpaEnabled : config.tpahereEnabled; if (!permissions.isMaster(sender) && !enabled) return setTeleport(sender, type); if (permissions.canUseBot(sender) && Date.now() - lastTeleport > 5000) { lastTeleport = Date.now(); reply("/tpaccept"); logger.info("TPA", `Accepted ${type} from ${sender}.`); } return; } handleCommand(sender, text); }); bot.on("kicked", reason => logger.warn("CONNECTION", `Kicked: ${typeof reason === "string" ? reason : JSON.stringify(reason)}`)); bot.on("error", error => logger.error("CONNECTION", error.message)); bot.once("end", () => { navigation.stop(); afk.stop(); if (!stopping) { logger.warn("CONNECTION", "Disconnected."); reconnect.schedule(); } }); }
-  function shutdown() { if (stopping) return; stopping = true; reconnect.cancel(); afk.stop(); bot?.quit("AFK bot shutting down"); setTimeout(() => process.exit(0), 250); }
-  process.once("SIGINT", shutdown); process.once("SIGTERM", shutdown); connect();
+  const save = (key, value) => {
+    try {
+      saveEnvValue(path.join(__dirname, "..", ".env"), key, value);
+    } catch (error) {
+      logger.error("CONFIG", error.message);
+    }
+  };
+  const deny = (sender) => {
+    reply(message("BLACKLIST_MESSAGE", { player: sender }));
+    logger.warn("COMMAND", `Ignored blacklisted player ${sender}.`);
+  };
+  function setTeleport(sender, type) {
+    if (pendingTeleport) {
+      logger.warn("TPA", `Ignored duplicate request from ${sender}.`);
+      return;
+    }
+    pendingTeleport = { sender, type, expiresAt: Date.now() + 30000 };
+    reply(message("TELEPORT_APPROVAL_MESSAGE", pendingTeleport));
+    logger.info("TPA", `Awaiting master approval for ${type} from ${sender}.`);
+    setTimeout(() => {
+      if (pendingTeleport?.expiresAt <= Date.now()) {
+        logger.info("TPA", `Request from ${pendingTeleport.sender} expired.`);
+        pendingTeleport = undefined;
+      }
+    }, 30000);
+  }
+  function handleMaster(sender, name, args) {
+    if (!permissions.isMaster(sender)) {
+      reply(message("MASTER_ONLY_MESSAGE", { player: sender }));
+      return;
+    }
+    const target = name === "rm" ? args[1] : args[0];
+    if (name === "public" || name === "private") {
+      config.allowOtherPlayers = name === "public";
+      if (name === "private") {
+        config.tpaEnabled = false;
+        config.tpahereEnabled = false;
+        save("TPA_ENABLED", false);
+        save("TPAHERE_ENABLED", false);
+      }
+      save("ALLOW_OTHER_PLAYERS", config.allowOtherPlayers);
+      reply(
+        message(
+          name === "public"
+            ? "PUBLIC_ACCESS_MESSAGE"
+            : "PRIVATE_ACCESS_MESSAGE",
+        ),
+      );
+      return;
+    }
+    if (name === "tpa") {
+      const enabled = ["on", "true", "enable", "enabled"].includes(
+        String(target).toLowerCase(),
+      );
+      const disabled = ["off", "false", "disable", "disabled"].includes(
+        String(target).toLowerCase(),
+      );
+      if (!enabled && !disabled) return reply(message("TPA_USAGE_MESSAGE"));
+      config.tpaEnabled = enabled;
+      config.tpahereEnabled = enabled;
+      save("TPA_ENABLED", enabled);
+      save("TPAHERE_ENABLED", enabled);
+      return reply(
+        message("TPA_STATUS_MESSAGE", {
+          status: enabled ? "enabled" : "disabled",
+        }),
+      );
+    }
+    if (!USERNAME.test(target || ""))
+      return reply(
+        message(
+          name === "master"
+            ? "MASTER_USAGE_MESSAGE"
+            : name === "bl"
+              ? "BLACKLIST_USAGE_MESSAGE"
+              : name === "rmbl"
+                ? "RM_BLACKLIST_USAGE_MESSAGE"
+                : "RM_MASTER_USAGE_MESSAGE",
+        ),
+      );
+    const key = normalizeName(target);
+    if (name === "master") {
+      if (permissions.isMaster(target))
+        return reply(message("ALREADY_MASTER_MESSAGE", { player: target }));
+      config.masters.add(key);
+      save("MASTERS", [...config.masters].join(","));
+      return reply(message("MASTER_ADDED_MESSAGE", { player: target }));
+    }
+    if (name === "bl") {
+      if (permissions.isPrimaryMaster(target))
+        return reply(message("PRIMARY_MASTER_BLACKLIST_MESSAGE"));
+      if (config.blacklist.has(key))
+        return reply(
+          message("ALREADY_BLACKLISTED_MESSAGE", { player: target }),
+        );
+      config.blacklist.add(key);
+      save("BLACKLIST", [...config.blacklist].join(","));
+      return reply(message("BLACKLISTED_MESSAGE", { player: target }));
+    }
+    if (name === "rm" && args[0]?.toLowerCase() !== "master")
+      return reply(message("RM_MASTER_USAGE_MESSAGE"));
+    if (name === "rm" && permissions.isPrimaryMaster(target))
+      return reply(
+        message("MASTER_PROTECTED_MESSAGE", {
+          player: sender,
+          master: config.primaryMaster,
+        }),
+      );
+    if (name === "rm") {
+      if (!config.masters.delete(key))
+        return reply(
+          message("NOT_SECONDARY_MASTER_MESSAGE", { player: target }),
+        );
+      save("MASTERS", [...config.masters].join(","));
+      return reply(message("MASTER_REMOVED_MESSAGE", { player: target }));
+    }
+    if (!config.blacklist.delete(key))
+      return reply(message("NOT_BLACKLISTED_MESSAGE", { player: target }));
+    save("BLACKLIST", [...config.blacklist].join(","));
+    reply(message("UNBLACKLISTED_MESSAGE", { player: target }));
+  }
+  function handleCommand(sender, text) {
+    if (normalizeName(sender) === normalizeName(bot?.username)) return;
+    const command = parseCommand(text, config.commandPrefix, sender);
+    if (!command) return;
+    const { name, args } = command;
+    const now = Date.now();
+    const fingerprint = `${normalizeName(sender)}|${name}|${args.map(normalizeName).join("|")}`;
+    const previous = recentCommands.get(fingerprint);
+    if (previous && now - previous < 1000) {
+      logger.debug(
+        "COMMAND",
+        `Ignored duplicate command packet from ${sender}.`,
+      );
+      return;
+    }
+    recentCommands.set(fingerprint, now);
+    for (const [key, timestamp] of recentCommands)
+      if (now - timestamp > 5000) recentCommands.delete(key);
+    if (permissions.isBlacklisted(sender)) return deny(sender);
+    if (name === "y" || name === "n") {
+      if (
+        permissions.isMaster(sender) &&
+        pendingTeleport &&
+        pendingTeleport.expiresAt > Date.now()
+      ) {
+        const request = pendingTeleport;
+        pendingTeleport = undefined;
+        if (name === "y") reply("/tpaccept");
+        else reply(message("TPA_REJECT_MESSAGE", { player: request.sender }));
+      }
+      return;
+    }
+    if (
+      ["master", "rm", "bl", "rmbl", "public", "private", "tpa"].includes(name)
+    )
+      return handleMaster(sender, name, args);
+    if (name === "cmd") {
+      config.messages.COMMAND_HELP_GENERAL.split("|").forEach(reply);
+      if (permissions.isMaster(sender))
+        config.messages.COMMAND_HELP_MASTER.split("|").forEach(reply);
+      return;
+    }
+    if (name === "status")
+      return reply(
+        message("STATUS_MESSAGE", { seconds: Math.floor(process.uptime()) }),
+      );
+    if (!permissions.canUseBot(sender)) return;
+    logger.info("COMMAND", `${config.commandPrefix}${name} from ${sender}.`);
+    if (
+      ["follow", "come", "stopfollow"].includes(name) &&
+      !config.features.navigation
+    ) {
+      logger.warn(
+        "NAVIGATION",
+        "Ignored navigation command because FEATURE_NAVIGATION is disabled.",
+      );
+      return;
+    }
+    if (name === "follow")
+      return navigation.follow(sender)
+        ? reply(message("FOLLOWING_MESSAGE", { player: sender }))
+        : reply(message("FOLLOW_TARGET_NOT_FOUND_MESSAGE", { player: sender }));
+    if (name === "come") {
+      const hasCoordinates =
+        args.length >= 3 &&
+        args.slice(0, 3).every((value) => Number.isFinite(Number(value)));
+      const success = navigation.come(sender, args);
+      return success
+        ? reply(
+            hasCoordinates
+              ? message("COMING_COORDINATES_MESSAGE", {
+                  coordinates: args.slice(0, 3).join(" "),
+                })
+              : message("COMING_PLAYER_MESSAGE", { player: sender }),
+          )
+        : reply(message("COME_TARGET_NOT_FOUND_MESSAGE", { player: sender }));
+    }
+    if (name === "stopfollow") {
+      if (!navigation.isActive())
+        return reply(message("NOT_FOLLOWING_MESSAGE", { player: sender }));
+      navigation.stop();
+      return reply(message("NAVIGATION_STOPPED_MESSAGE"));
+    }
+    if (name === "stop") {
+      if (!permissions.isPrimaryMaster(sender))
+        return reply(message("PRIMARY_STOP_ONLY_MESSAGE", { player: sender }));
+      reply(message("STOP_MESSAGE"));
+      shutdown();
+    }
+  }
+  function connect() {
+    if (stopping) return;
+    logger.info(
+      "CONNECTION",
+      `Connecting to ${config.host}:${config.port} as ${config.username}.`,
+    );
+    bot = mineflayer.createBot({
+      host: config.host,
+      port: config.port,
+      username: config.username,
+      auth: config.auth,
+      ...(config.version ? { version: config.version } : {}),
+    });
+    bot.loadPlugin(pathfinder);
+    bot.once("spawn", () => {
+      reconnect.reset();
+      auth.reset();
+      navigation.setup();
+      knownPlayers.clear();
+      Object.keys(bot.players || {}).forEach((name) =>
+        knownPlayers.add(normalizeName(name)),
+      );
+      greetingsReady = false;
+      setTimeout(() => {
+        greetingsReady = true;
+      }, 5000);
+      logger.info(
+        "CONNECTION",
+        `Connected${bot.version ? ` (${bot.version})` : ""}.`,
+      );
+      if (config.features.afk && config.moveEnabled) afk.start();
+    });
+    bot.on("playerJoined", (player) => {
+      const name = typeof player === "string" ? player : player?.username;
+      if (!name) return;
+      const key = normalizeName(name);
+      const isNew = !knownPlayers.has(key);
+      knownPlayers.add(key);
+      if (isNew && greetingsReady && permissions.isPrimaryMaster(name)) {
+        reply(message("MASTER_JOIN_MESSAGE", { player: name }));
+        logger.info("CONNECTION", `Primary master joined: ${name}.`);
+      }
+    });
+    bot.on("playerLeft", (player) => {
+      const name = typeof player === "string" ? player : player?.username;
+      if (!name) return;
+      knownPlayers.delete(normalizeName(name));
+      if (navigation.handlePlayerLeft(name))
+        reply(message("NAVIGATION_TARGET_LEFT_MESSAGE", { player: name }));
+      if (permissions.isPrimaryMaster(name)) {
+        reply(message("MASTER_LEAVE_MESSAGE", { player: name }));
+        logger.info("CONNECTION", `Primary master left: ${name}.`);
+      }
+    });
+    bot.on("respawn", () => {
+      navigation.stop();
+      navigation.setup();
+      logger.info(
+        "CONNECTION",
+        "World or dimension changed; reset navigation for the new world.",
+      );
+    });
+    bot.on("path_update", (result) => {
+      if (["noPath", "timeout"].includes(result?.status))
+        navigation.recalculate();
+    });
+    bot.on("goal_reached", () => {
+      if (navigation.goalReached()) {
+        logger.info("NAVIGATION", "Goal reached.");
+        reply(message("GOAL_REACHED_MESSAGE"));
+      }
+    });
+    bot._client?.on("playerChat", (data) => {
+      const uuid = String(data.sender || "").toLowerCase();
+      const name = senderNameValue(data.senderName);
+      if (uuid && name) senderNames.set(uuid, name);
+    });
+    bot.on("chat", (username, chatMessage) =>
+      handleCommand(username, chatMessage),
+    );
+    bot.on("messagestr", (raw, _position, _json, uuid) => {
+      const text = normalizeMessage(raw);
+      if (config.features.authme) auth.inspect(text);
+      const sender = extractSender(bot, uuid, text, senderNames);
+      if (!sender || normalizeName(sender) === normalizeName(bot.username))
+        return;
+      const type = config.features.tpa && teleportType(text);
+      if (type) {
+        if (permissions.isBlacklisted(sender)) return deny(sender);
+        const enabled =
+          type === "tpa" ? config.tpaEnabled : config.tpahereEnabled;
+        if (!permissions.isMaster(sender) && !enabled)
+          return setTeleport(sender, type);
+        if (permissions.canUseBot(sender) && Date.now() - lastTeleport > 5000) {
+          lastTeleport = Date.now();
+          reply("/tpaccept");
+          logger.info("TPA", `Accepted ${type} from ${sender}.`);
+        }
+        return;
+      }
+      handleCommand(sender, text);
+    });
+    bot.on("kicked", (reason) =>
+      logger.warn(
+        "CONNECTION",
+        `Kicked: ${typeof reason === "string" ? reason : JSON.stringify(reason)}`,
+      ),
+    );
+    bot.on("error", (error) => logger.error("CONNECTION", error.message));
+    bot.once("end", () => {
+      navigation.stop();
+      afk.stop();
+      if (!stopping) {
+        logger.warn("CONNECTION", "Disconnected.");
+        reconnect.schedule();
+      }
+    });
+  }
+  function shutdown() {
+    if (stopping) return;
+    stopping = true;
+    reconnect.cancel();
+    afk.stop();
+    bot?.quit("AFK bot shutting down");
+    setTimeout(() => process.exit(0), 250);
+  }
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+  connect();
 }
 module.exports = { start };
