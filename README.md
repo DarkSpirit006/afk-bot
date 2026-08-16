@@ -36,21 +36,17 @@ npm start
 ### Windows PowerShell
 
 <!-- BRANCH_INSTALL_POWERSHELL_START -->
-
 ```powershell
 irm "https://raw.githubusercontent.com/DarkSpirit006/afk-bot/main/install.ps1" | iex
 ```
-
 <!-- BRANCH_INSTALL_POWERSHELL_END -->
 
 ### Linux / Termux
 
 <!-- BRANCH_INSTALL_TERMUX_START -->
-
 ```sh
 curl -fsSL "https://raw.githubusercontent.com/DarkSpirit006/afk-bot/main/install.sh" | bash
 ```
-
 <!-- BRANCH_INSTALL_TERMUX_END -->
 
 Windows users can also run [install.ps1](install.ps1) locally; Linux and Termux users can run [install.sh](install.sh). The installers retain existing files and `.env`; review a remote script before piping it into a shell.
