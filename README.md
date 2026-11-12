@@ -1,39 +1,29 @@
 # Minecraft AFK Bot
 
-[![Build](https://img.shields.io/github/actions/workflow/status/DarkSpirit006/afk-bot/test.yml?branch=main&style=for-the-badge&label=BUILD)](https://github.com/DarkSpirit006/afk-bot/actions/workflows/test.yml)
-[![CodeFactor](https://www.codefactor.io/repository/github/DarkSpirit006/afk-bot/badge?style=for-the-badge)](https://www.codefactor.io/repository/github/DarkSpirit006/afk-bot)
-[![Repo size](https://img.shields.io/github/repo-size/DarkSpirit006/afk-bot?style=for-the-badge&label=REPO%20SIZE)](https://github.com/DarkSpirit006/afk-bot)
-[![Code size](https://img.shields.io/github/languages/code-size/DarkSpirit006/afk-bot?style=for-the-badge&label=CODE%20SIZE)](https://github.com/DarkSpirit006/afk-bot)
-[![License](https://img.shields.io/github/license/DarkSpirit006/afk-bot?style=for-the-badge)](LICENSE)
+A Mineflayer bot that keeps a Minecraft account online. It handles AuthMe
+(chat prompts and the newer login dialogs), follows players around, and answers
+a few chat commands from whoever you put in charge.
 
-A self-hosted Mineflayer bot for Minecraft servers you are allowed to automate. It provides restrained AFK movement, reconnects safely, supports AuthMe prompts, navigation, teleport requests, and master-controlled commands from an ordinary terminal.
+Use it on your own server, or any server that allows bots.
 
-## Features
+## Requirements
 
-- Configurable AFK movement that pauses for navigation
-- AuthMe registration/login prompt handling (passwords are never logged)
-- Automatic reconnect with a configurable delay
-- `!follow`, `!come`, and `!stopfollow` pathfinding commands
-- Primary/secondary master permissions and persistent blacklist
-- Configurable `/tpa` and `/tpahere` approval flow
-- Feature switches, log levels, configuration validation, and unit tests
+- Node.js 22 or newer (mineflayer 4.37 needs it)
+- git
 
-## Requirements and installation
-
-Use Node.js 18 or newer. Clone the repository, then install dependencies:
+## Setup
 
 ```sh
+git clone https://github.com/DarkSpirit006/afk-bot.git
+cd afk-bot
 npm install
 npm run setup
 ```
 
-`npm run setup` creates `.env`, preserving existing configuration unless you choose a fresh setup. Start a configured bot with:
+`npm run setup` asks a few questions, writes `.env` and starts the bot.
+`npm start` from then on just starts it.
 
-```sh
-npm start
-```
-
-### Windows PowerShell
+On Windows and Termux you can skip the clone:
 
 <!-- BRANCH_INSTALL_POWERSHELL_START -->
 ```powershell
@@ -41,83 +31,87 @@ irm "https://raw.githubusercontent.com/DarkSpirit006/afk-bot/main/install.ps1" |
 ```
 <!-- BRANCH_INSTALL_POWERSHELL_END -->
 
-### Linux / Termux
-
 <!-- BRANCH_INSTALL_TERMUX_START -->
 ```sh
 curl -fsSL "https://raw.githubusercontent.com/DarkSpirit006/afk-bot/main/install.sh" | bash
 ```
 <!-- BRANCH_INSTALL_TERMUX_END -->
 
-Windows users can also run [install.ps1](install.ps1) locally; Linux and Termux users can run [install.sh](install.sh). The installers retain existing files and `.env`; review a remote script before piping it into a shell.
+## Configuration
 
-## Quick configuration
-
-Copy [.env.example](.env.example) to `.env` if you prefer manual setup. `MASTER_USERNAME` is required and must be a valid Minecraft username. Do not commit `.env`.
+Everything lives in `.env`. Copy `.env.example` or run `npm run setup`.
 
 ```env
 MC_HOST=localhost
 MC_PORT=25565
 MC_USERNAME=AFK_Bot
-MASTER_USERNAME=YourMinecraftName
+MC_AUTH=offline
+MASTER_USERNAME=YourName
 AUTH_PASSWORD=""
-LOG_LEVEL=info
 ```
 
-See [configuration](docs/configuration.md) for every setting. At startup the bot reports its server, username, and authentication mode, but never the password.
+`MASTER_USERNAME` is required, the bot will not start without it. All the other
+settings are documented in [docs/configuration.md](docs/configuration.md).
 
-## Commands and permissions
+## Commands
 
-The primary master and names in `MASTERS` are masters. `!public` permits ordinary users to use navigation commands; blacklisted players are always denied.
+`MASTER_USERNAME` and anyone added with `!master` can use all of these.
+`!public` lets normal players use the movement commands.
 
-| Command                                           | Access               | Purpose                      |
-| ------------------------------------------------- | -------------------- | ---------------------------- |
-| `!status`, `!cmd`                                 | Anyone               | Bot uptime / command help    |
-| `!follow`, `!come [x y z]`, `!stopfollow`         | Master unless public | Navigation                   |
-| `!stop`                                           | Primary master       | Gracefully stops the bot     |
-| `!master`, `!rm master`, `!bl`, `!rmbl`           | Master               | Manage permissions           |
-| `!public`, `!private`, `!tpa on\|off`, `!y`, `!n` | Master               | Access and teleport requests |
+| Command | Who | What it does |
+| --- | --- | --- |
+| `!status` `!pos` `!health` | anyone | uptime, coordinates, health |
+| `!cmd` | anyone | list the commands you are allowed to use |
+| `!follow` `!come [x y z]` `!stopfollow` | master or public | move the bot |
+| `!master` `!rm` `!bl` `!rmbl` | master | permissions and blacklist |
+| `!public` `!private` `!tpa on\|off` | master | access and teleport policy |
+| `!y [id]` `!n [id]` | master | accept or reject a teleport request |
+| `!say <text>` | primary master | make the bot talk |
+| `!stop` | primary master | shut the bot down |
 
-Full examples and arguments are in [commands](docs/commands.md).
+Changes made with these commands are written back to `.env`, so they survive a
+restart.
 
-## AuthMe, navigation, and TPA
+## AuthMe
 
-When `AUTH_PASSWORD` is set and AuthMe-like server text requests a login or registration, the bot sends the normal server command. It does not bypass authentication. AuthMe detection, AFK movement, navigation, and TPA handling can each be disabled with feature flags.
+Both login styles work:
 
-`!follow` and player-targeted `!come` require the bot to see the player. Coordinate `!come x y z` is useful when it cannot. Pathfinding will not dig blocks.
+- **Chat prompts.** The bot watches server messages for `/login` and `/register`
+  prompts. Player chat is ignored, so nobody can trick it into sending the
+  password.
+- **Dialogs** (AuthMe 6 on MC 1.21.6+). Includes the pre-join dialog that shows
+  up before you are actually in the world, plus registration, email recovery
+  and 2FA with `AUTH_TOTP_SECRET`.
 
-When teleport acceptance is disabled for non-masters, the bot asks a master to answer `!y` or `!n`; requests expire after 30 seconds.
+Set `AUTH_PASSWORD` and it just works. `FEATURE_AUTHME` and
+`FEATURE_AUTH_DIALOG` turn each half off if you do not need it.
 
-## Updating and development
+## Notes
 
-The installer URL selects the checkout branch, and `npm start`/`npm run afk` update only that branch before launching. If an existing checkout has uncommitted changes, branch switching stops safely. Pull and review updates yourself, then run setup to install dependencies or fill in newly introduced setup values:
+- Commands are only taken from player chat, and the sender is read from the
+  chat packet, not guessed from the text. Rank prefixes like `[Admin]` cannot be
+  used to pretend to be the owner.
+- The bot only walks when it is safe to: not while hurt, in water or lava, or
+  standing on something that will kill it. `AFK_STYLE=walk` is opt-in.
+- Reconnects back off instead of hammering the server, and stop for good on a
+  ban, whitelist rejection or failed login.
+- `WATCHDOG_MS` restarts the connection if the server goes quiet, which catches
+  the half-dead sockets that never fire a disconnect.
+- Set `HEALTH_PORT` if you want a `/healthz` JSON endpoint for uptime monitoring.
+
+## Development
 
 ```sh
-git pull --ff-only
-npm run setup
-npm test
+npm test        # 130+ tests, no server needed
+npm run lint
+npm run update  # pull the installed branch, then start
+npm run migrate # add new settings to an existing .env
 ```
 
-Run `npm run check` for syntax checks. The test suite covers configuration, permissions, parsing, and reconnect scheduling. Mineflayer/server connectivity needs a real authorized server and is not exercised in CI.
+The bot itself is in `src/bot.js`; the pieces it uses are in `src/services`,
+`src/auth`, `src/commands` and `src/navigation`. Tests inject a fake bot, so the
+command and dialog paths can be checked without connecting anywhere.
 
-## Troubleshooting and supported versions
+## License
 
-Mineflayer determines protocol support; set `MC_VERSION` only to a version supported by the installed Mineflayer release, or leave it blank for automatic detection. For connection, authentication, installation, and navigation issues, read [troubleshooting](docs/troubleshooting.md).
-
-<!--
-## Demo
-
-No screenshots are included yet. A terminal demonstration should show configuration loading, connection, AuthMe state (without the password), AFK state, command output, and reconnect notices.
--->
-
-## Contributors
-
-This project is maintained by [DarkSpirit006](https://github.com/DarkSpirit006). Contributions and improvements are welcome through pull requests.
-
-[![Contributors](https://contrib.rocks/image?repo=DarkSpirit006/afk-bot)](https://github.com/DarkSpirit006/afk-bot/graphs/contributors)
-
-[View all contributors](https://github.com/DarkSpirit006/afk-bot/graphs/contributors)
-
-## Contributing and license
-
-Keep secrets out of commits, add tests for behavior changes, and avoid executing chat-provided shell commands. Licensed under the [MIT License](LICENSE).
+MIT.

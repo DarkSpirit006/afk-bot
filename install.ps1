@@ -9,10 +9,21 @@ $defaultRepoBranch = 'main'
 $repoBranch = if ($env:AFK_BOT_BRANCH) { $env:AFK_BOT_BRANCH } else { $defaultRepoBranch }
 $runtimeDir = Join-Path $env:TEMP 'minecraft-afk-bot-node'
 
+function Test-NodeVersion($nodePath) {
+  try {
+    $major = & $nodePath -p "process.versions.node.split('.')[0]"
+    return [int]$major -ge 22
+  }
+  catch { return $false }
+}
+
 function Get-NodeCommand {
   $node = Get-Command node.exe -ErrorAction SilentlyContinue
   $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-  if ($node -and $npm) { return @{ Node = $node.Source; Npm = $npm.Source } }
+  if ($node -and $npm) {
+    if (Test-NodeVersion $node.Source) { return @{ Node = $node.Source; Npm = $npm.Source } }
+    Write-Host "Node.js $(& $node.Source -v) is too old for mineflayer; using a portable Node.js 22 instead."
+  }
   if (-not (Test-Path $runtimeDir)) { New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null }
   $arch = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x86' }
   $version = 'v22.14.0'

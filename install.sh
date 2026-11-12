@@ -16,6 +16,16 @@ if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
         elif command -v pacman >/dev/null 2>&1; then [ "$(id -u)" -eq 0 ] && PAC= || PAC=sudo; $PAC pacman -Sy --noconfirm nodejs npm
 else echo 'No supported package manager found.'; exit 1; fi
 fi
+NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+if [ "${NODE_MAJOR:-0}" -lt 22 ]; then
+    echo "Node.js 22 or newer is required (mineflayer needs it); found $(node -v 2>/dev/null || echo none)."
+    if [ "$PLATFORM" = termux ]; then
+        echo "Install it with: pkg install nodejs-lts"
+    else
+        echo "Install it from https://nodejs.org/en/download/package-manager (or your distribution's nodejs 22 package), then run this again."
+    fi
+    exit 1
+fi
 if ! command -v git >/dev/null 2>&1; then
     echo "Git was not found; installing it for $PLATFORM..."
     if [ "$PLATFORM" = termux ]; then pkg install -y git

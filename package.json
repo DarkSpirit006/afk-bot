@@ -1,15 +1,29 @@
 {
   "name": "minecraft-afk-bot",
-  "version": "1.1.0",
+  "version": "2.1.0",
   "private": true,
-  "description": "A feature-rich Minecraft AFK bot built with Mineflayer.",
+  "license": "MIT",
+  "description": "Minecraft AFK bot built with Mineflayer",
   "main": "bot.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DarkSpirit006/afk-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DarkSpirit006/afk-bot/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
+    "start": "node bot.js",
+    "afk": "node bot.js",
     "setup": "node setup.js",
-    "start": "node setup.js --update",
-    "afk": "node setup.js --update",
-    "test": "node --test",
-    "check": "node --check bot.js && node --check setup.js && node --check src/bot.js"
+    "update": "node setup.js --update",
+    "migrate": "node setup.js --migrate",
+    "test": "node --test test/*.test.js",
+    "lint": "eslint .",
+    "check": "node --check bot.js && node --check setup.js && node --check src/bot.js && node --test test/*.test.js"
   },
   "keywords": [
     "minecraft",
@@ -18,16 +32,17 @@
     "minecraft-bot",
     "nodejs"
   ],
-  "engines": {
-    "node": ">=18"
-  },
   "dependencies": {
     "dotenv": "^16.4.7",
-    "mineflayer": "^4.27.0",
+    "mineflayer": "4.37.1",
     "mineflayer-pathfinder": "^2.4.5",
-    "uuid": "^11.0.0"
+    "prismarine-nbt": "^2.8.0",
+    "uuid": "^11.1.1"
+  },
+  "devDependencies": {
+    "eslint": "^9.30.0"
   },
   "overrides": {
-    "uuid": "^11.0.0"
+    "uuid": "^11.1.1"
   }
 }

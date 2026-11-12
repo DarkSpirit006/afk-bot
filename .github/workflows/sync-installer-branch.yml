@@ -2,15 +2,23 @@ name: Sync branch install defaults
 
 on:
   push:
-    branches:
-      - "**"
+    branches: [main]
+    paths:
+      - "install.sh"
+      - "install.ps1"
+      - "README.md"
+      - ".github/workflows/sync-installer-branch.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: sync-installer-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   sync:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
