@@ -1,6 +1,5 @@
 {
   "name": "minecraft-afk-bot",
-  "version": "2.1.0",
   "private": true,
   "license": "MIT",
   "description": "Minecraft AFK bot built with Mineflayer",

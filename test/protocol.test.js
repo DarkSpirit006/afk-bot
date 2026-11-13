@@ -74,20 +74,18 @@ test("pre-join dialog decodes into the expected shape", () => {
 });
 
 test("a post-join dialog decodes through its registry holder", () => {
-  const dialog = fixtures.buildDialog({
-    inputs: ["password"],
-    template: "login $(password)",
-  });
-  const bytes = toClient("play").createPacketBuffer({
-    name: "show_dialog",
-    params: { dialog: { data: dialog } },
-  });
+  const bytes = fixtures.showDialogPayload("play", fixtures.POST_JOIN_LOGIN());
   const decoded = fromServer("play").parsePacketBuffer(bytes);
   const holder = decoded.data.params.dialog;
   assert.ok(holder.data, "the inline dialog arrives inside a registry holder");
   const description = describeDialog(holder, nbt);
   assert.equal(description.kind, "login");
   assert.equal(description.commandTemplate, "login $(password)");
+});
+
+test("a post-join dialog sent by registry id is ignored", () => {
+  const description = describeDialog({ dialog: 4 }, nbt);
+  assert.equal(description.kind, "unknown");
 });
 
 test("the answer the bot writes is a valid custom_click_action", () => {
@@ -178,16 +176,6 @@ const withTimeout = (promise, ms, label) =>
     ),
   ]);
 
-const waitFor = async (check, ms, label) => {
-  const deadline = Date.now() + ms;
-  while (Date.now() < deadline) {
-    const value = check();
-    if (value) return value;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error(`${label} timed out after ${ms}ms`);
-};
-
 test("the bot answers the pre-join AuthMe dialog end to end", async (t) => {
   const { server, port } = await startServer();
   t.after(() => server.close());
@@ -262,6 +250,10 @@ test("a post-join dialog turns into a login command", async (t) => {
       username: client.username,
       properties: [],
     });
+    client.on("state", (state) => {
+      if (state !== "play") return;
+      client.writeRaw(fixtures.showDialogPayload("play", fixtures.POST_JOIN_LOGIN()));
+    });
     client.on("chat_command", (packet) => answered(packet));
   });
   server.on("error", () => {});
@@ -291,19 +283,6 @@ test("a post-join dialog turns into a login command", async (t) => {
     onExit: () => {},
   });
   t.after(() => controller.shutdown());
-
-  // A play-state show_dialog does not survive minecraft-protocol's own
-  // encode/decode round trip, so the dialog goes straight to the client. The
-  // answer still travels over the wire.
-  const client = await waitFor(
-    () => {
-      const current = controller.getBot()?._client;
-      return current?.state === "play" ? current : undefined;
-    },
-    15000,
-    "the bot joining",
-  );
-  client.emit("show_dialog", { dialog: { data: fixtures.POST_JOIN_LOGIN() } });
 
   const packet = await withTimeout(response, 15000, "the login command");
   assert.equal(packet.command, "login hunter2");

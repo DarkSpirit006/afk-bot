@@ -44,20 +44,44 @@ function checkNodeVersion() {
   return false;
 }
 
-function ask(question, fallback = "") {
-  const rl = readline.createInterface({
+// One readline interface for the whole wizard. Opening a new one per question
+// drops any lines the user pasted ahead of the prompt.
+let prompts;
+const waiting = [];
+const typed = [];
+
+function openPrompts() {
+  prompts = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    terminal: Boolean(process.stdin.isTTY),
   });
-  return new Promise((resolve) =>
-    rl.question(
-      `${question}${fallback ? ` [${fallback}]` : ""}: `,
-      (answer) => {
-        rl.close();
-        resolve(answer.trim() || fallback);
-      },
-    ),
+  prompts.on("line", (line) => {
+    const resolve = waiting.shift();
+    if (resolve) resolve(line);
+    else typed.push(line);
+  });
+  // Ctrl+D or a closed pipe: fall back to the defaults instead of hanging.
+  prompts.on("close", () => {
+    while (waiting.length) waiting.shift()("");
+    prompts = undefined;
+  });
+}
+
+function closePrompts() {
+  if (prompts) prompts.close();
+}
+
+function ask(question, fallback = "") {
+  if (!prompts) openPrompts();
+  process.stdout.write(
+    `${question}${fallback ? ` [${fallback}]` : ""}: `,
   );
+  return new Promise((resolve) => {
+    const answer = (line) => resolve(line.trim() || fallback);
+    if (typed.length) answer(typed.shift());
+    else waiting.push(answer);
+  });
 }
 
 const confirm = async (question, fallback = "n") =>
@@ -290,6 +314,7 @@ async function main() {
     console.log("Using the existing configuration.");
   }
 
+  closePrompts();
   if (noStart) return;
   console.log("Starting the bot...");
   startBot();

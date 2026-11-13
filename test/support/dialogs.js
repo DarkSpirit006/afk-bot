@@ -1,3 +1,4 @@
+const { createSerializer } = require("minecraft-protocol/src/transforms/serializer");
 const nbt = require("prismarine-nbt");
 
 // Dialog NBT shaped like the packets AuthMe sends through Paper: a multi_action
@@ -120,6 +121,37 @@ const POST_JOIN_TOTP = () =>
     afterAction: "close",
   });
 
+// minecraft-protocol leaves a garbage byte where the inline registry holder's
+// leading zero varint should go, so a play-state dialog it encodes is not what
+// a real server sends. This patches that byte and returns the packet body,
+// which is what writeRaw expects (it adds the length itself).
+const DIALOG_PACKET_ID = { configuration: 0x12, play: 0x85 };
+const VERSION = "1.21.6";
+
+const varintLength = (value) => {
+  let bytes = 1;
+  let rest = value;
+  while (rest > 0x7f) {
+    rest >>>= 7;
+    bytes += 1;
+  }
+  return bytes;
+};
+
+function showDialogPayload(state, dialog) {
+  const serializer = createSerializer({
+    state,
+    isServer: true,
+    version: VERSION,
+  });
+  const params = state === "play" ? { dialog: { data: dialog } } : { dialog };
+  const payload = Buffer.from(
+    serializer.createPacketBuffer({ name: "show_dialog", params }),
+  );
+  if (state === "play") payload[varintLength(DIALOG_PACKET_ID[state])] = 0;
+  return payload;
+}
+
 const NOTICE_DIALOG = () =>
   buildDialog({
     title: "Welcome",
@@ -138,4 +170,5 @@ module.exports = {
   PRE_JOIN_REGISTER,
   buildDialog,
   customAction,
+  showDialogPayload,
 };

@@ -191,6 +191,21 @@ test("special characters are written safely", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("the first save creates a .env for a fresh setup", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "afk-bot-env-"));
+  const envPath = path.join(dir, ".env");
+
+  saveEnvValue(envPath, "MC_HOST", "localhost");
+  saveEnvValue(envPath, "MASTER_USERNAME", "Owner");
+
+  assert.equal(
+    fs.readFileSync(envPath, "utf8"),
+    'MC_HOST="localhost"\nMASTER_USERNAME="Owner"\n',
+  );
+  assert.equal(fs.statSync(envPath).mode & 0o777, 0o600);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("saving to a missing .env fails loudly", () => {
   assert.throws(
     () => saveEnvValue("/nonexistent/.env", "KEY", "value"),

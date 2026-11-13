@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const path = require("node:path");
 
 /** Serialises a value the way dotenv expects to read it back. */
 function serializeValue(value) {
@@ -26,14 +27,18 @@ function readEnvValues(envPath) {
 // One key in .env. Written to a temp file and renamed, so a crash or a full disk
 // cannot leave a half-written config behind.
 function saveEnvValue(envPath, key, value) {
-  if (!fs.existsSync(envPath))
+  if (!fs.existsSync(path.dirname(envPath)))
     throw new Error("Cannot save settings: .env was not found.");
-  const current = fs.readFileSync(envPath, "utf8");
+  // A fresh setup has no .env yet, so the first save creates it.
+  const current = fs.existsSync(envPath)
+    ? fs.readFileSync(envPath, "utf8")
+    : "";
   const line = new RegExp(`^\\s*${key}\\s*=.*$`, "m");
   const next = `${key}=${serializeValue(value)}`;
+  const trimmed = current.replace(/\s*$/, "");
   const contents = line.test(current)
     ? current.replace(line, next.replace(/\$/g, "$$$$"))
-    : `${current.replace(/\s*$/, "\n")}${next}\n`;
+    : `${trimmed ? `${trimmed}\n` : ""}${next}\n`;
 
   const temporary = `${envPath}.${process.pid}.tmp`;
   fs.writeFileSync(temporary, contents, { encoding: "utf8", mode: 0o600 });
