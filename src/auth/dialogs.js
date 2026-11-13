@@ -1,4 +1,5 @@
 const { describeError } = require("../utils/helpers");
+const { encodeClickAction } = require("./click-action");
 const { generateTotp } = require("../utils/totp");
 
 // AuthMe 6 login dialogs (MC 1.21.6+). Two flavours, both handled here:
@@ -249,19 +250,17 @@ function createDialogAuth({
   const send = (description, values) => {
     const client = getClient();
     if (!client) return false;
-    const payload = nbt.comp(
-      Object.fromEntries(
-        Object.entries(values).map(([key, value]) => [
-          key,
-          nbt.string(String(value)),
-        ]),
-      ),
-    );
     try {
-      client.write("custom_click_action", {
-        id: description.submitId,
-        nbt: payload,
-      });
+      client.writeRaw(
+        encodeClickAction({
+          state: client.state,
+          // The packet id moves between versions, so use the one the client
+          // negotiated.
+          version: client.version ?? getBot()?.version,
+          id: description.submitId,
+          values,
+        }),
+      );
       return true;
     } catch (error) {
       logger?.error(

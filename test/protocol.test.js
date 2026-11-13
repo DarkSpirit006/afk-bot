@@ -15,6 +15,7 @@ const {
   createDeserializer,
 } = require("minecraft-protocol/src/transforms/serializer");
 const { describeDialog } = require("../src/auth/dialogs");
+const { encodeClickAction, packetId } = require("../src/auth/click-action");
 const { loadConfig } = require("../src/config/config");
 const { memoryLogger } = require("./support/fakes");
 const { start } = require("../src/bot");
@@ -27,8 +28,6 @@ const { start } = require("../src/bot");
 const VERSION = "1.21.6";
 const toClient = (state) =>
   createSerializer({ state, isServer: true, version: VERSION });
-const fromClient = (state) =>
-  createDeserializer({ state, isServer: true, version: VERSION });
 const fromServer = (state) =>
   createDeserializer({ state, isServer: false, version: VERSION });
 
@@ -88,40 +87,50 @@ test("a post-join dialog sent by registry id is ignored", () => {
   assert.equal(description.kind, "unknown");
 });
 
-test("the answer the bot writes is a valid custom_click_action", () => {
-  const payload = nbt.comp({ password: nbt.string("hunter2") });
-  const bytes = createSerializer({
+test("the answer the bot writes has the payload as length-prefixed NBT", () => {
+  const bytes = encodeClickAction({
     state: "configuration",
-    isServer: false,
     version: VERSION,
-  }).createPacketBuffer({
-    name: "custom_click_action",
-    params: { id: "authme:prejoin-login/submit", nbt: payload },
+    id: "authme:prejoin-login/submit",
+    values: { password: "hunter2" },
   });
 
-  const decoded = fromClient("configuration").parsePacketBuffer(bytes);
-  assert.equal(decoded.data.name, "custom_click_action");
-  assert.equal(decoded.data.params.id, "authme:prejoin-login/submit");
-  assert.deepEqual(nbt.simplify(decoded.data.params.nbt), {
-    password: "hunter2",
-  });
-  // Packet id 0x08 in the configuration state, per the 1.21.6 protocol.
+  // Packet id 0x08 in the configuration state, then the action id, then the
+  // byte count of the payload, then the NBT itself.
   assert.equal(bytes[0], 0x08);
+  const decoded = fixtures.decodeClickAction(bytes);
+  assert.equal(decoded.id, "authme:prejoin-login/submit");
+  assert.equal(decoded.payloadSize, 22);
+  assert.deepEqual(decoded.values, { password: "hunter2" });
+  assert.equal(decoded.rest.length, 0, "nothing follows the payload");
+
+  // Golden bytes, so a change to the layout shows up as a diff rather than as a
+  // decode error from a server.
+  assert.equal(
+    bytes.toString("hex"),
+    "081b617574686d653a7072656a6f696e2d6c6f67696e2f7375626d6974" +
+      "160a08000870617373776f7264000768756e7465723200",
+  );
 });
 
-test("a click action without a payload ends with TAG_END", () => {
-  const bytes = createSerializer({
-    state: "configuration",
-    isServer: false,
-    version: VERSION,
-  }).createPacketBuffer({
-    name: "custom_click_action",
-    params: { id: "authme:prejoin-login/cancel", nbt: undefined },
-  });
-  assert.equal(bytes[bytes.length - 1], 0x00);
-  const decoded = fromClient("configuration").parsePacketBuffer(bytes);
-  assert.equal(decoded.data.params.id, "authme:prejoin-login/cancel");
-  assert.equal(decoded.data.params.nbt, undefined);
+test("the packet id comes from the protocol data, not a guess", () => {
+  assert.equal(packetId("configuration", "1.21.6"), 0x08);
+  assert.equal(packetId("configuration", "1.21.11"), 0x08);
+  assert.equal(packetId("play", VERSION), 65);
+  assert.throws(() => packetId("status", VERSION), /No custom_click_action/);
+});
+
+test("an answer with no fields still carries an empty compound", () => {
+  const decoded = fixtures.decodeClickAction(
+    encodeClickAction({
+      state: "configuration",
+      version: VERSION,
+      id: "authme:prejoin-login/cancel",
+      values: {},
+    }),
+  );
+  assert.equal(decoded.id, "authme:prejoin-login/cancel");
+  assert.deepEqual(decoded.values, {});
 });
 
 /**
@@ -193,7 +202,15 @@ test("the bot answers the pre-join AuthMe dialog end to end", async (t) => {
       if (state !== "configuration") return;
       client.write("show_dialog", { dialog: fixtures.PRE_JOIN_LOGIN() });
     });
-    client.on("custom_click_action", (packet) => answered(packet));
+    // The library cannot decode this packet, so the frame is read off the
+    // socket: the splitter emits a compression marker followed by the body.
+    client.on("error", () => {});
+    client.splitter.on("data", (frame) => {
+      if (frame[0] !== 0) return; // uncompressed at this size
+      const body = frame.slice(1);
+      if (body[0] !== 0x08) return; // not a click action
+      answered(fixtures.decodeClickAction(body));
+    });
   });
   server.on("error", () => {});
 
@@ -226,7 +243,7 @@ test("the bot answers the pre-join AuthMe dialog end to end", async (t) => {
 
   const packet = await withTimeout(response, 15000, "the dialog answer");
   assert.equal(packet.id, "authme:prejoin-login/submit");
-  assert.deepEqual(nbt.simplify(packet.nbt), { password: "hunter2" });
+  assert.deepEqual(packet.values, { password: "hunter2" });
 
   const log = logger.text();
   assert.match(log, /Answered the login dialog \(attempt 1\/3\)/);

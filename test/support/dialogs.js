@@ -152,6 +152,42 @@ function showDialogPayload(state, dialog) {
   return payload;
 }
 
+// Reads back a click action the bot wrote, for tests that check the bytes.
+function readVarInt(buffer, offset) {
+  let value = 0;
+  let size = 0;
+  for (;;) {
+    const byte = buffer[offset + size];
+    if (byte === undefined) throw new Error("truncated varint");
+    size += 1;
+    value |= (byte & 0x7f) << (7 * (size - 1));
+    if ((byte & 0x80) === 0) return { value: value >>> 0, size };
+  }
+}
+
+function decodeClickAction(buffer) {
+  let offset = 0;
+  const id = readVarInt(buffer, offset);
+  offset += id.size;
+  const name = readVarInt(buffer, offset);
+  offset += name.size;
+  const text = buffer.slice(offset, offset + name.value).toString("utf8");
+  offset += name.value;
+  const length = readVarInt(buffer, offset);
+  offset += length.size;
+  const payload = buffer.slice(offset, offset + length.value);
+  const tag = payload.length
+    ? nbt.proto.read(payload, 0, "anonymousNbt")
+    : undefined;
+  return {
+    packetId: id.value,
+    id: text,
+    payloadSize: length.value,
+    values: tag ? nbt.simplify(tag.value) : undefined,
+    rest: buffer.slice(offset + length.value),
+  };
+}
+
 const NOTICE_DIALOG = () =>
   buildDialog({
     title: "Welcome",
@@ -170,5 +206,6 @@ module.exports = {
   PRE_JOIN_REGISTER,
   buildDialog,
   customAction,
+  decodeClickAction,
   showDialogPayload,
 };

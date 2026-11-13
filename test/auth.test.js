@@ -122,6 +122,9 @@ function fakeClient() {
   client.state = "configuration";
   client.writes = [];
   client.write = (name, params) => client.writes.push({ name, params });
+  // Dialog answers are raw bytes, so they land here instead of in writes.
+  client.rawWrites = [];
+  client.writeRaw = (buffer) => client.rawWrites.push(buffer);
   return client;
 }
 
@@ -145,17 +148,18 @@ function setupDialogs(overrides = {}) {
   return { auth, client, bot, logger };
 }
 
-const payloadOf = (client) => nbt.simplify(client.writes.at(-1).params.nbt);
+const answerOf = (client) =>
+  fixtures.decodeClickAction(client.rawWrites.at(-1));
 
 test("pre-join login dialog is answered with a click action", () => {
   const { auth, client, logger } = setupDialogs();
   const result = auth.handle({ dialog: fixtures.PRE_JOIN_LOGIN() });
 
   assert.equal(result.status, "submitted");
-  assert.equal(client.writes.length, 1);
-  assert.equal(client.writes[0].name, "custom_click_action");
-  assert.equal(client.writes[0].params.id, "authme:prejoin-login/submit");
-  assert.deepEqual(payloadOf(client), { password: "hunter2" });
+  assert.equal(client.rawWrites.length, 1);
+  const answer = answerOf(client);
+  assert.equal(answer.id, "authme:prejoin-login/submit");
+  assert.deepEqual(answer.values, { password: "hunter2" });
 
   assert.match(logger.text(), /Answered the login dialog \(attempt 1\/3\)/);
   assert.equal(
@@ -177,15 +181,15 @@ test("a dialog wrapped in a registry holder is unwrapped", () => {
   const { auth, client } = setupDialogs();
   const holder = { data: fixtures.PRE_JOIN_LOGIN() };
   assert.equal(auth.handle({ dialog: holder }).status, "submitted");
-  assert.equal(client.writes[0].params.id, "authme:prejoin-login/submit");
+  assert.equal(answerOf(client).id, "authme:prejoin-login/submit");
 });
 
 test("register dialog fills password and confirm", () => {
   const { auth, client } = setupDialogs();
   const result = auth.handle({ dialog: fixtures.PRE_JOIN_REGISTER() });
   assert.equal(result.status, "submitted");
-  assert.equal(client.writes[0].params.id, "authme:prejoin-register/submit");
-  assert.deepEqual(payloadOf(client), {
+  assert.equal(answerOf(client).id, "authme:prejoin-register/submit");
+  assert.deepEqual(answerOf(client).values, {
     password: "hunter2",
     confirm: "hunter2",
   });
@@ -197,7 +201,7 @@ test("email registration fills email and confirm", () => {
     dialog: fixtures.PRE_JOIN_REGISTER(["email", "confirm"]),
   });
   assert.equal(result.status, "submitted");
-  assert.deepEqual(payloadOf(client), {
+  assert.deepEqual(answerOf(client).values, {
     email: "bot@example.org",
     confirm: "bot@example.org",
   });
@@ -211,7 +215,7 @@ test("missing email is skipped, not submitted", () => {
   assert.equal(result.status, "skipped");
   assert.match(result.reason, /AUTH_EMAIL/);
   assert.equal(
-    client.writes.length,
+    client.rawWrites.length,
     0,
     "an invalid registration must not be sent",
   );
@@ -224,14 +228,16 @@ test("a recovery dialog needs AUTH_EMAIL", () => {
     withEmail.auth.handle({ dialog: fixtures.PRE_JOIN_RECOVERY() }).status,
     "submitted",
   );
-  assert.deepEqual(payloadOf(withEmail.client), { email: "bot@example.org" });
+  assert.deepEqual(answerOf(withEmail.client).values, {
+    email: "bot@example.org",
+  });
 
   const withoutEmail = setupDialogs({ email: "" });
   const result = withoutEmail.auth.handle({
     dialog: fixtures.PRE_JOIN_RECOVERY(),
   });
   assert.equal(result.status, "skipped");
-  assert.equal(withoutEmail.client.writes.length, 0);
+  assert.equal(withoutEmail.client.rawWrites.length, 0);
 });
 
 test("no password configured means no dialog answer at all", () => {
@@ -239,14 +245,14 @@ test("no password configured means no dialog answer at all", () => {
   const result = auth.handle({ dialog: fixtures.PRE_JOIN_LOGIN() });
   assert.equal(result.status, "skipped");
   assert.match(result.reason, /AUTH_PASSWORD/);
-  assert.equal(client.writes.length, 0);
+  assert.equal(client.rawWrites.length, 0);
 });
 
 test("notices and dialogs without a submit action are ignored", () => {
   const { auth, client, logger } = setupDialogs();
   const result = auth.handle({ dialog: fixtures.NOTICE_DIALOG() });
   assert.equal(result.status, "ignored");
-  assert.equal(client.writes.length, 0);
+  assert.equal(client.rawWrites.length, 0);
   assert.match(logger.text(), /without a submit action/);
 });
 
@@ -257,11 +263,11 @@ test("the attempt limit stops a wrong-password loop", () => {
       auth.handle({ dialog: fixtures.PRE_JOIN_LOGIN() }).status,
       "submitted",
     );
-  assert.equal(client.writes.length, 3);
+  assert.equal(client.rawWrites.length, 3);
 
   const fourth = auth.handle({ dialog: fixtures.PRE_JOIN_LOGIN() });
   assert.equal(fourth.status, "gave-up");
-  assert.equal(client.writes.length, 3, "no further attempts after the limit");
+  assert.equal(client.rawWrites.length, 3, "no further attempts after the limit");
   assert.equal(auth.gaveUp(), true);
   assert.match(logger.text(), /Gave up after 3 dialog attempts/);
 });
@@ -270,11 +276,11 @@ test("a re-sent dialog is throttled before another attempt", () => {
   let clock = 0;
   const { auth, client } = setupDialogs({ now: () => clock });
   auth.handle({ dialog: fixtures.PRE_JOIN_LOGIN() });
-  assert.equal(client.writes.length, 1);
+  assert.equal(client.rawWrites.length, 1);
 
   const early = auth.handle({ dialog: fixtures.PRE_JOIN_LOGIN() });
   assert.equal(early.status, "throttled");
-  assert.equal(client.writes.length, 1);
+  assert.equal(client.rawWrites.length, 1);
 
   clock += 5000;
   assert.equal(
@@ -288,7 +294,7 @@ test("post-join dialog is answered with a command", () => {
   const result = auth.handle({ dialog: fixtures.POST_JOIN_LOGIN() });
   assert.equal(result.status, "submitted");
   assert.deepEqual(bot.sent, ["/login hunter2"]);
-  assert.equal(client.writes.length, 0);
+  assert.equal(client.rawWrites.length, 0);
 
   bot.sent.length = 0;
   auth.handle({ dialog: fixtures.POST_JOIN_REGISTER() });
@@ -344,8 +350,8 @@ test("a new connection resets the attempt counter", () => {
 test("packets arriving on the client are handled automatically", () => {
   const { client } = setupDialogs();
   client.emit("show_dialog", { dialog: fixtures.PRE_JOIN_LOGIN() });
-  assert.equal(client.writes.length, 1);
-  assert.equal(client.writes[0].params.id, "authme:prejoin-login/submit");
+  assert.equal(client.rawWrites.length, 1);
+  assert.equal(answerOf(client).id, "authme:prejoin-login/submit");
 });
 
 test("chat auth stays quiet while a dialog is open", () => {
@@ -362,7 +368,7 @@ test("a broken packet cannot crash the bot", () => {
   const { client } = setupDialogs();
   client.emit("show_dialog", { dialog: undefined });
   client.emit("show_dialog", undefined);
-  assert.equal(client.writes.length, 0);
+  assert.equal(client.rawWrites.length, 0);
 });
 
 test("template expansion is safe for missing values", () => {
@@ -434,7 +440,7 @@ test("dialog auth can be turned off", () => {
     auth.handle({ dialog: fixtures.PRE_JOIN_LOGIN() }).status,
     "disabled",
   );
-  assert.equal(client.writes.length, 0);
+  assert.equal(client.rawWrites.length, 0);
 });
 
 // RFC 6238 appendix B test vectors (secret "12345678901234567890").
