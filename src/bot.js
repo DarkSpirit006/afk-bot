@@ -29,6 +29,7 @@ const { createWatchdog } = require("./services/watchdog");
 const { createHealthServer } = require("./services/health");
 const { createAuthMe } = require("./auth/authme");
 const { createDialogAuth } = require("./auth/dialogs");
+const { installClientTick } = require("./services/client-tick");
 const { createNavigation } = require("./navigation/navigation");
 
 const SENDER_CACHE_LIMIT = 500;
@@ -610,6 +611,7 @@ function start(options = {}) {
       }
     }
     dialogs.attach(instance._client);
+    installClientTick({ client: instance._client, version: config.version || instance.version, logger });
     bindBotEvents(instance);
     return instance;
   }

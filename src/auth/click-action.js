@@ -41,16 +41,24 @@ function anonymousNbt(values) {
   return buffer;
 }
 
-function packetId(state, version) {
+// The packet id for a serverbound packet in a given state, or undefined when
+// the version does not have it.
+function findPacketId(version, state, name) {
   try {
     const mappings =
       minecraftData(version).protocol[state].toServer.types.packet[1][0].type[1]
         .mappings;
-    for (const [id, name] of Object.entries(mappings))
-      if (name === "custom_click_action") return Number(id);
+    for (const [id, packet] of Object.entries(mappings))
+      if (packet === name) return Number(id);
   } catch {
-    // Unknown version: fall through to the defaults.
+    // Unknown version: no lookup possible.
   }
+  return undefined;
+}
+
+function packetId(state, version) {
+  const id = findPacketId(version, state, "custom_click_action");
+  if (id !== undefined) return id;
   const fallback = FALLBACK_ID[state];
   if (fallback === undefined)
     throw new Error(`No custom_click_action packet in the ${state} state.`);
@@ -68,4 +76,4 @@ function encodeClickAction({ state, version, id, values }) {
   ]);
 }
 
-module.exports = { encodeClickAction, packetId };
+module.exports = { encodeClickAction, findPacketId, packetId };

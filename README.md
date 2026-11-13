@@ -95,6 +95,9 @@ Set `AUTH_PASSWORD` and it just works. `FEATURE_AUTHME` and
   standing on something that will kill it. `AFK_STYLE=walk` is opt-in.
 - Reconnects back off instead of hammering the server, and stop for good on a
   ban, whitelist rejection or failed login.
+- The bot ends its client tick after every movement packet. Newer servers
+  allow one position per tick and kick anything else, which is exactly the
+  "invalid player movement" kick that mineflayer runs into on its own.
 - `WATCHDOG_MS` restarts the connection if the server goes quiet, which catches
   the half-dead sockets that never fire a disconnect.
 - Set `HEALTH_PORT` if you want a `/healthz` JSON endpoint for uptime monitoring.

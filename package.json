@@ -34,7 +34,7 @@
   "dependencies": {
     "dotenv": "^16.4.7",
     "minecraft-data": "^3.112.0",
-    "mineflayer": "4.37.1",
+    "mineflayer": "^4.39.0",
     "mineflayer-pathfinder": "^2.4.5",
     "prismarine-nbt": "^2.8.0",
     "uuid": "^11.1.1"

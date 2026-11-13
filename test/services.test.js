@@ -12,6 +12,7 @@ const { createAfk } = require("../src/services/afk");
 const { createChatQueue } = require("../src/services/chat-queue");
 const { createFakeBot, createPosition } = require("./support/fakes");
 const { createHealthServer } = require("../src/services/health");
+const { installClientTick } = require("../src/services/client-tick");
 const { createTeleport } = require("../src/services/teleport");
 const { createWatchdog } = require("../src/services/watchdog");
 
@@ -553,4 +554,44 @@ test("port 0 disables the endpoint", async () => {
   const health = createHealthServer({ port: 0, getState: () => ({}) });
   assert.equal(await health.start(), false);
   assert.equal(health.url(), undefined);
+});
+
+function fakeWireClient(version = "1.21.11") {
+  const client = { version, state: "play", sent: [] };
+  client.write = (name) => client.sent.push(name);
+  return client;
+}
+
+test("movement packets are followed by a tick_end", () => {
+  const client = fakeWireClient();
+  installClientTick({ client, version: "1.21.11" });
+
+  client.write("position", {});
+  client.write("look", {});
+  client.write("chat_message", {});
+
+  assert.deepEqual(client.sent, [
+    "position",
+    "tick_end",
+    "look",
+    "tick_end",
+    "chat_message",
+  ]);
+});
+
+test("versions without tick_end are left alone", () => {
+  const client = fakeWireClient("1.21.2");
+  installClientTick({ client, version: "1.21.2" });
+
+  client.write("position", {});
+  assert.deepEqual(client.sent, ["position"]);
+});
+
+test("uninstalling restores the plain write", () => {
+  const client = fakeWireClient();
+  const stop = installClientTick({ client, version: "1.21.11" });
+  stop();
+
+  client.write("position", {});
+  assert.deepEqual(client.sent, ["position"]);
 });
