@@ -56,17 +56,54 @@ function isKnownPlayer(players, name) {
   );
 }
 
-// Who sent this? Try the packet uuid first, then an anchored name that belongs to
-// a player we can see. No match means no command.
+// Decoration in front of a name: bracket groups, emoji, punctuation and spaces.
+// Anything else means the line does not start with a name.
+const LEADING_DECORATION =
+  /^(?:[[(「『【][^\])」』】]{0,40}[\])」』】]\s*|[^\p{L}\p{N}_[(「『【]+)/u;
+
+function stripLeadingDecoration(text) {
+  let rest = text;
+  for (;;) {
+    const next = rest.replace(LEADING_DECORATION, "");
+    if (next === rest) return rest;
+    rest = next;
+  }
+}
+
+// Last resort, for servers whose chat format is not "Name: text": look for a
+// player we can actually see right at the start of the line. A name that is not
+// on the server, or a name that is not in the leading position, never matches.
+function authorFromRoster(text, players, self) {
+  const clean = stripLeadingDecoration(normalizeMessage(text));
+  if (!clean) return "";
+  const selfKey = normalizeName(self);
+  for (const name of Object.keys(players || {})) {
+    const key = normalizeName(name);
+    if (!key || key === selfKey) continue;
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (
+      new RegExp(
+        `^${escaped}\\s*(?=[:>»→]|\\bwhispers?\\b|\\bsays\\b)`,
+        "i",
+      ).test(clean)
+    )
+      return name;
+  }
+  return "";
+}
+
+// Who sent this? The packet uuid first, then an anchored "Name:" prefix, then
+// the roster scan. No match means no command.
 function resolveSender({ players, uuid, text, cache, self }) {
   const byUuid = nameForUuid(players, uuid, cache);
   if (byUuid && normalizeName(byUuid) !== normalizeName(self)) return byUuid;
 
   const parsed = parseChatAuthor(text);
-  if (!parsed) return "";
-  if (normalizeName(parsed) === normalizeName(self)) return "";
-  if (isKnownPlayer(players, parsed)) return parsed;
-  return "";
+  if (parsed) {
+    if (normalizeName(parsed) === normalizeName(self)) return "";
+    if (isKnownPlayer(players, parsed)) return parsed;
+  }
+  return authorFromRoster(text, players, self);
 }
 
 /** Extracts a readable name from a mineflayer senderName / chat JSON value. */
@@ -103,6 +140,7 @@ function teleportType(text) {
 }
 
 module.exports = {
+  authorFromRoster,
   isKnownPlayer,
   nameForUuid,
   parseChatAuthor,

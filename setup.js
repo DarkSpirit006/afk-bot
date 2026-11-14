@@ -98,15 +98,34 @@ function runNpm(npmArgs) {
   return spawnSync(npm, npmArgs, { stdio: "inherit", cwd: root });
 }
 
-function ensureDependencies() {
-  const installed = fs.existsSync(path.join(root, "node_modules"));
-  if (installed && !forceInstall) {
-    console.log(
-      "Dependencies are already installed (use --install to refresh).",
+// npm stamps node_modules/.package-lock.json whenever it installs. If the
+// project's lock file is newer, the checkout was updated and the installed
+// packages are the old ones.
+function dependenciesStale() {
+  const installedLock = path.join(root, "node_modules", ".package-lock.json");
+  if (!fs.existsSync(installedLock)) return true;
+  try {
+    const installedAt = fs.statSync(installedLock).mtimeMs;
+    return ["package.json", "package-lock.json"].some(
+      (file) => fs.statSync(path.join(root, file)).mtimeMs > installedAt,
     );
+  } catch {
     return true;
   }
-  console.log("Installing dependencies...");
+}
+
+function ensureDependencies() {
+  const installed = fs.existsSync(path.join(root, "node_modules"));
+  const stale = installed && dependenciesStale();
+  if (installed && !stale && !forceInstall) {
+    console.log("Dependencies are already installed.");
+    return true;
+  }
+  console.log(
+    stale && !forceInstall
+      ? "package.json changed since the last install; updating dependencies..."
+      : "Installing dependencies...",
+  );
   const result = runNpm(["install", "--omit=dev", "--no-audit", "--no-fund"]);
   if (result.error || result.status !== 0) {
     console.error(

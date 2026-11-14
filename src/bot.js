@@ -13,6 +13,7 @@ const {
 const { createRateLimit } = require("./utils/rate-limit");
 const { createPermissions } = require("./permissions/permissions");
 const {
+  authorFromRoster,
   resolveSender,
   senderFromText,
   senderNameValue,
@@ -385,6 +386,40 @@ function start(options = {}) {
     }
   }
 
+  // Some servers push player chat through their own plugin, and it then shows
+  // up as ordinary server text instead of a chat packet. A command in that
+  // text is still a command, but only when the name at the front belongs to a
+  // player who is actually online and the message itself starts with the
+  // prefix, so an unrelated broadcast cannot run anything.
+  function chatFromServerLine(text, instance) {
+    const command = text.indexOf(config.commandPrefix);
+    if (command < 0) return "";
+    const author = authorFromRoster(
+      text.slice(0, command),
+      instance.players,
+      instance.username,
+    );
+    if (!author) return "";
+    logger.info(
+      "CHAT",
+      `Read ${config.commandPrefix}${text.slice(command + 1).split(" ")[0]} from server chat as ${author}.`,
+    );
+    return author;
+  }
+
+  function noteUnattributed(text) {
+    if (text.includes(config.commandPrefix))
+      logger.warn(
+        "CHAT",
+        `Ignored a command it could not attribute to a player: ${text}`,
+      );
+    else
+      logger.debug(
+        "CHAT",
+        "Ignored a chat line because the sender could not be identified.",
+      );
+  }
+
   function handleTeleportRequest(sender, type) {
     if (permissions.isBlacklisted(sender)) return deny(sender);
     const enabled = type === "tpa" ? config.tpaEnabled : config.tpahereEnabled;
@@ -516,13 +551,7 @@ function start(options = {}) {
         cache: senderNames,
         self: instance.username,
       });
-      if (!sender) {
-        logger.debug(
-          "CHAT",
-          "Ignored a chat line because the sender could not be identified.",
-        );
-        return;
-      }
+      if (!sender) return noteUnattributed(text);
       handleChatLine(sender, text);
     });
 
@@ -533,6 +562,9 @@ function start(options = {}) {
       if (position === "chat") return;
       const text = normalizeMessage(raw);
       if (config.features.authme && !dialogs.isBusy()) auth.inspect(text);
+
+      const author = chatFromServerLine(text, instance);
+      if (author) return handleChatLine(author, text);
 
       const type = config.features.tpa && teleportType(text);
       if (!type) return;

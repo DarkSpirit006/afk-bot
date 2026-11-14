@@ -50,6 +50,20 @@ test("server broadcasts never run commands", (t) => {
   assert.equal(bot.quitReason, undefined);
 });
 
+test("chat a server plugin relays still runs a command", (t) => {
+  const { bot } = harness(t);
+  emitServer(bot, "\u2b50 [Owner] Owner: !status");
+  assert.match(said(bot), /Online for/);
+});
+
+test("a broadcast that mentions a command does nothing", (t) => {
+  const { bot } = harness(t);
+  emitServer(bot, "Welcome! Owner: use !stop to stop the bot");
+  emitServer(bot, "Type !stop to stop the bot");
+  assert.equal(said(bot), "");
+  assert.equal(bot.quitReason, undefined);
+});
+
 test("masters can be added and removed", (t) => {
   const { bot, config, envPath } = harness(t);
   emitChat(bot, "!master Bob", { uuid: "uuid-owner" });

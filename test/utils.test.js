@@ -237,6 +237,36 @@ test("unknown or ambiguous authors are rejected", () => {
   );
 });
 
+test("a decorated chat line still resolves to the player", () => {
+  // Servers with a chat plugin usually put tags, emoji or full width brackets
+  // in front of the name, and send no sender uuid with the message.
+  const cases = [
+    "\u2b50 [Owner] Bob: !stop",
+    "\u300cL\u300dBob \u00bb !stop",
+    "(Mod) Bob: !stop",
+    "Bob: !stop",
+    "Bob says: !stop",
+  ];
+  for (const text of cases)
+    assert.equal(
+      resolveSender({ players, text, cache: new Map() }),
+      "Bob",
+      text,
+    );
+});
+
+test("decoration alone never invents a sender", () => {
+  // The name has to be at the very start of the message, not somewhere inside
+  // it, or anyone could put a master's name in their own chat line.
+  const cases = [
+    "hey Bob: !stop",
+    "someone said Bob: !stop",
+    "Bob the builder: !stop",
+  ];
+  for (const text of cases)
+    assert.equal(resolveSender({ players, text, cache: new Map() }), "");
+});
+
 test("known player lookups are case insensitive", () => {
   assert.equal(isKnownPlayer(players, "bob"), true);
   assert.equal(isKnownPlayer(players, "nobody"), false);
